@@ -10,15 +10,16 @@ import java.util.List;
 
 /**
  * Feign client para consultar el catalog-service (Django REST Framework).
- * La URL se configura via spring.cloud.openfeign.client.config.catalog-service.url
+ * La URL se configura via CATALOG_SERVICE_URL env var.
+ * Llama directamente al catalog-service (sin pasar por el gateway) — no requiere JWT.
  */
 @FeignClient(name = "catalog-service", url = "${CATALOG_SERVICE_URL:http://localhost:8002}")
 public interface CatalogClient {
 
-    @GetMapping("/api/products/{id}/")
+    @GetMapping("/api/catalog/products/{id}/")
     CatalogProductDTO getProductById(@PathVariable("id") Long id);
 
-    @GetMapping("/api/products/")
+    @GetMapping("/api/catalog/products/")
     String getProducts(
             @RequestParam(value = "category", required = false) Long categoryId,
             @RequestParam(value = "page_size", defaultValue = "20") int pageSize
