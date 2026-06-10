@@ -1,0 +1,59 @@
+# =============================================
+# Spring Boot / Maven
+# =============================================
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Maven wrapper
+.mvn/wrapper/maven-wrapper.properties
+
+# =============================================
+# Secrets & sensitive files — NEVER commit
+# =============================================
+.env
+.env.*
+application-secret.yml
+application-secret.yaml
+application-local.yml
+application-local.yaml
+**/src/main/resources/application-secret*
+**/src/main/resources/application-local*
+
+# =============================================
+# IDE
+# =============================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+
+# =============================================
+# Logs & temp
+# =============================================
+*.log
+*.log.*
+*.gz
+logs/
+*.tmp
+*.bak
+*.swp
+
+# =============================================
+# OS
+# =============================================
+.DS_Store
+Thumbs.db
+
+# =============================================
+# Java compiled
+# =============================================
+*.class
+*.jar
+*.war
+*.ear
