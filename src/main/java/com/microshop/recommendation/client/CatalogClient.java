@@ -16,6 +16,9 @@ import java.util.List;
 @FeignClient(name = "catalog-service", url = "${CATALOG_SERVICE_URL:http://localhost:8002}")
 public interface CatalogClient {
 
+    @GetMapping("/api/catalog/categories/")
+    String getCategories();
+
     @GetMapping("/api/catalog/products/{id}/")
     CatalogProductDTO getProductById(@PathVariable("id") Long id);
 

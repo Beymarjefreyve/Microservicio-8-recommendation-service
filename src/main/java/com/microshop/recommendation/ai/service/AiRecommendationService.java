@@ -71,14 +71,25 @@ public class AiRecommendationService {
             List<String> purchasedCategoryNames = getUserPurchasedCategoryNames(request.getUserId());
             List<String> viewedCategoryNames    = getUserViewedCategoryNames(request.getUserId());
 
-            // Single catalog call — reused for both available categories and category map
+            // Single catalog call — reused for product samples and category fallback
             String rawCatalog = fetchRawFromCatalog(null, 20);
-            List<String> availableCategories = extractCategoryNames(rawCatalog);
+
+            // Build category map: prefer dedicated /categories/ endpoint, fall back to product list
+            Map<String, Long> categoryMap = fetchCategoryMap();
+            if (categoryMap == null) {
+                categoryMap = buildCategoryMapFromRaw(rawCatalog);
+            }
+
+            // Available category names for Gemini: prefer dedicated endpoint (complete list),
+            // fall back to names found in the product page
+            List<String> availableCategories = fetchCategoryNames();
+            if (availableCategories.isEmpty()) {
+                availableCategories = extractCategoryNames(rawCatalog);
+            }
             if (availableCategories.isEmpty()) {
                 availableCategories = List.of("Electrónica", "Ropa", "Alimentos", "Deportes",
                                               "Hogar", "Audio", "Computadores", "Accesorios");
             }
-            Map<String, Long> categoryMap = buildCategoryMapFromRaw(rawCatalog);
 
             List<String> sampleProductNames = parseProductList(rawCatalog).stream()
                 .map(p -> (String) p.get("name"))
@@ -259,6 +270,24 @@ public class AiRecommendationService {
                     .collect(Collectors.toList());
                 if (!withKeywords.isEmpty()) {
                     log.info("Phase 1 matched {} products with keywords", withKeywords.size());
+
+                    // If keyword results are fewer than 5, pad with category products not already included
+                    final int MIN_RESULTS = 5;
+                    if (withKeywords.size() < MIN_RESULTS) {
+                        Set<Long> keywordIds = withKeywords.stream()
+                            .map(CatalogProductDTO::getId)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toSet());
+                        List<CatalogProductDTO> categoryPad = allProducts.stream()
+                            .filter(p -> p.getId() != null && !keywordIds.contains(p.getId()))
+                            .limit(MIN_RESULTS - withKeywords.size())
+                            .collect(Collectors.toList());
+                        log.info("Phase 1 padding {} category-only products to reach minimum of {}",
+                                 categoryPad.size(), MIN_RESULTS);
+                        withKeywords = new ArrayList<>(withKeywords);
+                        withKeywords.addAll(categoryPad);
+                    }
+
                     allProducts = withKeywords;
                 } else {
                     log.info("Phase 2: no keyword match, returning {} products by category only", allProducts.size());
@@ -406,6 +435,80 @@ public class AiRecommendationService {
         }
     }
 
+    /**
+     * Fetches all categories directly from GET /api/catalog/categories/ and builds a
+     * normalizedName -> id map. Falls back to extracting categories from a product list
+     * if the dedicated endpoint fails.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Long> fetchCategoryMap() {
+        try {
+            String raw = catalogClient.getCategories();
+            if (raw != null && !raw.isBlank()) {
+                Object parsed = objectMapper.readValue(raw, Object.class);
+                List<Map<String, Object>> list = null;
+                if (parsed instanceof List) {
+                    list = (List<Map<String, Object>>) parsed;
+                } else if (parsed instanceof Map) {
+                    Object results = ((Map<?, ?>) parsed).get("results");
+                    if (results instanceof List) {
+                        list = (List<Map<String, Object>>) results;
+                    }
+                }
+                if (list != null && !list.isEmpty()) {
+                    Map<String, Long> map = new HashMap<>();
+                    for (Map<String, Object> cat : list) {
+                        String name = (String) cat.get("name");
+                        Object idObj = cat.get("id");
+                        if (name != null && idObj instanceof Number) {
+                            map.put(normalizeString(name), ((Number) idObj).longValue());
+                        }
+                    }
+                    log.info("Category map built from /categories/ endpoint: {} entries", map.size());
+                    return map;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch categories from /categories/ endpoint, falling back to product extraction: {}", e.getMessage());
+        }
+        // Fallback: will be populated from raw product list by the caller
+        return null;
+    }
+
+    /**
+     * Fetches original (display) category names directly from /categories/ endpoint.
+     * Used to populate the list sent to Gemini. Falls back to empty list so the caller
+     * can use extractCategoryNames(rawCatalog) instead.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> fetchCategoryNames() {
+        try {
+            String raw = catalogClient.getCategories();
+            if (raw != null && !raw.isBlank()) {
+                Object parsed = objectMapper.readValue(raw, Object.class);
+                List<Map<String, Object>> list = null;
+                if (parsed instanceof List) {
+                    list = (List<Map<String, Object>>) parsed;
+                } else if (parsed instanceof Map) {
+                    Object results = ((Map<?, ?>) parsed).get("results");
+                    if (results instanceof List) {
+                        list = (List<Map<String, Object>>) results;
+                    }
+                }
+                if (list != null) {
+                    return list.stream()
+                        .map(cat -> (String) cat.get("name"))
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .collect(Collectors.toList());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch category names from /categories/ endpoint: {}", e.getMessage());
+        }
+        return List.of();
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Long> buildCategoryMapFromRaw(String raw) {
         try {
@@ -415,7 +518,8 @@ public class AiRecommendationService {
                 String name = (String) product.get("category_name");
                 Object idObj = product.get("category");
                 if (name != null && idObj instanceof Number) {
-                    map.put(name.toLowerCase(), ((Number) idObj).longValue());
+                    // Normalize key (lowercase + strip accents) so resolveCategoryId always matches
+                    map.put(normalizeString(name), ((Number) idObj).longValue());
                 }
             }
             return map;

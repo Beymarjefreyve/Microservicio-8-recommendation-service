@@ -115,8 +115,11 @@ public class GeminiService {
         sb.append("- categories: ONLY use exact names from AVAILABLE CATEGORIES list above. ");
         sb.append("Copy-paste them exactly. If unsure, use fewer or return empty array []. ");
         sb.append("NEVER invent or modify category names.\n");
-        sb.append("- keywords: use 1-2 generic keywords maximum. Avoid specific product names or brands ");
-        sb.append("unless the user explicitly mentioned them.\n");
+        sb.append("- keywords: generate between 4 and 8 keywords. Include synonyms, related terms, ");
+        sb.append("and broader terms that could match product names or descriptions. ");
+        sb.append("Example: for 'arte para decorar cuarto' use [Póster, Cuadro, Lienzo, Decoración, Pintura, Arte, Marco, Ilustración]. ");
+        sb.append("If the user mentioned a specific brand or product name, include it. ");
+        sb.append("Prefer words that appear in the REAL PRODUCT NAMES list above.\n");
         sb.append("- priceMin / priceMax: ONLY set if the user explicitly mentioned a price or budget. ");
         sb.append("Otherwise both must be null.\n");
         sb.append("- attributes: ONLY include attributes the user explicitly mentioned. ");
