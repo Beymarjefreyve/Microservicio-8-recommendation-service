@@ -207,8 +207,16 @@ public class AiRecommendationService {
             List<CatalogProductDTO> allProducts = new ArrayList<>();
             Set<Long> seenIds = new HashSet<>();
 
-            if (categoriesToSearch.isEmpty()) {
+            // If categoryMap is empty (catalog timeout on first call), fetch all products and
+            // filter in-memory — avoids returning 0 results just because the map is stale.
+            boolean categoryMapEmpty = categoryMap.isEmpty();
+
+            if (categoriesToSearch.isEmpty() || categoryMapEmpty) {
                 allProducts = fetchFromCatalog(null, pageSize, categoryMap);
+                if (categoryMapEmpty && !allProducts.isEmpty()) {
+                    log.info("Category map was empty — fetched {} products and will filter in-memory",
+                             allProducts.size());
+                }
             } else {
                 for (String cat : categoriesToSearch) {
                     Long catId = resolveCategoryId(cat, categoryMap);
@@ -223,6 +231,24 @@ public class AiRecommendationService {
                             allProducts.add(p);
                         }
                     }
+                }
+                // If all category lookups failed (IDs couldn't be resolved), try fetching all
+                if (allProducts.isEmpty()) {
+                    log.info("No products found by category IDs, falling back to full catalog fetch");
+                    allProducts = fetchFromCatalog(null, pageSize, categoryMap);
+                }
+            }
+
+            // If we fetched all products due to empty categoryMap, filter by category name in-memory
+            if (categoryMapEmpty && !categoriesToSearch.isEmpty() && !allProducts.isEmpty()) {
+                List<CatalogProductDTO> byCategoryName = allProducts.stream()
+                    .filter(p -> p.getCategoryName() != null && categoriesToSearch.stream()
+                        .anyMatch(cat -> normalizeString(p.getCategoryName()).contains(normalizeString(cat))
+                                     || normalizeString(cat).contains(normalizeString(p.getCategoryName()))))
+                    .collect(Collectors.toList());
+                if (!byCategoryName.isEmpty()) {
+                    log.info("In-memory category filter matched {} products", byCategoryName.size());
+                    allProducts = byCategoryName;
                 }
             }
 

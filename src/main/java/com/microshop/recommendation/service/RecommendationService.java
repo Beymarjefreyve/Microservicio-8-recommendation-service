@@ -187,9 +187,32 @@ public class RecommendationService {
         return result;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // HELPERS PRIVADOS
-    // ─────────────────────────────────────────────────────────────
+    /**
+     * Elimina del registro de popularidad los productos que ya no existen en el catálogo.
+     * Evita WARNs repetidos de "Producto no encontrado en catalog-service".
+     * @return cantidad de entradas eliminadas
+     */
+    @Transactional
+    public int cleanupStaleProducts() {
+        List<ProductPopularity> all = popularityRepo.findAll();
+        List<Long> toDelete = new ArrayList<>();
+        for (ProductPopularity p : all) {
+            try {
+                CatalogProductDTO product = catalogClient.getProductById(p.getProductId());
+                if (product == null || product.getName() == null) {
+                    toDelete.add(p.getProductId());
+                }
+            } catch (Exception e) {
+                // 404 or any error → product no longer exists
+                toDelete.add(p.getProductId());
+            }
+        }
+        if (!toDelete.isEmpty()) {
+            log.info("Cleaning up {} stale product(s) from popularity: {}", toDelete.size(), toDelete);
+            popularityRepo.deleteAllById(toDelete);
+        }
+        return toDelete.size();
+    }
 
     private void updatePopularityOnView(Long productId, Long categoryId) {
         ProductPopularity pop = popularityRepo.findById(productId)

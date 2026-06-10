@@ -83,4 +83,18 @@ public class RecommendationController {
         limit = Math.min(limit, 50);
         return ResponseEntity.ok(service.getPopularProducts(limit));
     }
+
+    /**
+     * POST /api/recommendations/admin/cleanup
+     * Elimina del registro de popularidad los productos que ya no existen en el catálogo.
+     * Útil para limpiar datos obsoletos sin reiniciar el servicio.
+     */
+    @PostMapping("/admin/cleanup")
+    public ResponseEntity<Map<String, Object>> cleanupStaleProducts() {
+        int removed = service.cleanupStaleProducts();
+        return ResponseEntity.ok(Map.of(
+            "message", "Limpieza completada",
+            "removed", removed
+        ));
+    }
 }
